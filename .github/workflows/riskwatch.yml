@@ -1,0 +1,105 @@
+name: 风险信息日报
+
+on:
+  schedule:
+    # 北京时间 08:30 / 18:00 = UTC 00:30 / 10:00（中国无夏令时）
+    - cron: '30 0,10 * * *'
+  workflow_dispatch:
+    inputs:
+      mail_test:
+        description: '只测 QQ 邮箱能否收到（不抓数据、不归档）'
+        type: boolean
+        default: false
+      report_test:
+        description: '只测企业微信群文件能否发出（不抓数据、不归档）'
+        type: boolean
+        default: false
+      dry_run:
+        description: '真实抓取但只预览，不发送、不归档'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: riskwatch
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 准备 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 准备目录与去重状态文件
+        run: mkdir -p reports && touch state.json
+
+      - name: 恢复上次的去重状态
+        uses: actions/cache@v4
+        with:
+          path: state.json
+          key: riskwatch-state-${{ github.run_id }}
+          restore-keys: |
+            riskwatch-state-
+
+      - name: 邮箱连通性自测
+        if: inputs.mail_test
+        env:
+          QQ_SMTP_USER: ${{ secrets.QQ_SMTP_USER }}
+          QQ_SMTP_CODE: ${{ secrets.QQ_SMTP_CODE }}
+          RISK_MAIL_TO: ${{ secrets.RISK_MAIL_TO }}
+        run: python riskwatch.py --mail-test --config config.cloud.json
+
+      - name: 群文件连通性自测
+        if: inputs.report_test && !inputs.mail_test
+        env:
+          WECOM_WEBHOOK: ${{ secrets.WECOM_WEBHOOK }}
+          RISK_REPORT_DIR: reports
+        run: python riskwatch.py --report-test --config config.cloud.json
+
+      - name: 抓取预览（不发送）
+        if: inputs.dry_run && !inputs.mail_test && !inputs.report_test
+        env:
+          RISK_STATE_FILE: state.json
+          RISK_REPORT_DIR: reports
+          RISK_FETCH_GAP: '1.0'
+        run: python riskwatch.py --dry-run --config config.cloud.json
+
+      - name: 抓取并投递到企业微信群与 QQ 邮箱
+        if: '!inputs.mail_test && !inputs.report_test && !inputs.dry_run'
+        env:
+          WECOM_WEBHOOK: ${{ secrets.WECOM_WEBHOOK }}
+          QQ_SMTP_USER: ${{ secrets.QQ_SMTP_USER }}
+          QQ_SMTP_CODE: ${{ secrets.QQ_SMTP_CODE }}
+          RISK_MAIL_TO: ${{ secrets.RISK_MAIL_TO }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          RISK_STATE_FILE: state.json
+          RISK_REPORT_DIR: reports
+          RISK_CHUNK_BYTES: '3000'
+          RISK_ALERT: '1'
+          RISK_FETCH_GAP: '1.0'
+        run: python riskwatch.py --once --config config.cloud.json
+
+      # 每天的归档提交本身就会让仓库保持活跃，无需额外的空提交保活。
+      - name: 归档日报到仓库
+        if: '!inputs.mail_test && !inputs.report_test && !inputs.dry_run'
+        run: |
+          git config user.name "riskwatch-bot"
+          git config user.email "riskwatch-bot@users.noreply.github.com"
+          git add reports/
+          if git diff --cached --quiet; then
+            echo "本次没有新的日报文件"
+          else
+            git commit -m "docs: 风险信息日报 $(date -u +%Y-%m-%d-%H%M)"
+            git push
+          fi
