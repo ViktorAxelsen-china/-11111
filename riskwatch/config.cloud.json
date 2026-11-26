@@ -35,6 +35,14 @@
     "重点源": "hkc_press（香港海关新闻公报）仍单列第四节，抓 30 条、按 7 类案件细分"
   },
 
+  "customs_focus": {
+    "enabled": true,
+    "exempt_food": true,
+    "_说明": "除食安信息外，新闻只保留与货运 / 旅检 / 保税区 / 蛇口片区及海关业务相关的；食安专用源 samr_food / cfs_alert / cfs_press、标题含食安词、以及香港海关重点源 hkc_press 全部豁免。改成 false 可恢复全量泛风险信息",
+    "_词表": "riskwatch.py 的 CUSTOMS_BIZ_KEYS（海关业务词）、FOOD_KEYS（食安豁免词）、FOOD_SOURCE_IDS（食安源）",
+    "_透明": "报告第九节逐源列出「聚焦滤除」条数，今日速览与群摘要给出合计"
+  },
+
   "report": {
     "enabled": true,
     "dir": "reports",
@@ -69,6 +77,8 @@
   },
 
   "_可调项": {
+    "customs_focus.enabled": "海关业务聚焦总开关：false 恢复全量泛风险信息（市场监管/社会案件等都会回来）",
+    "customs_focus.exempt_food": "食安信息是否豁免聚焦；默认 true，保持食安栏目完整",
     "min_score": "相关性阈值，越大越严格（重点源 hkc_press 不受此限制；命中蛇口专题的条目保底收录）",
     "report.docx": "是否生成 Word 版；关掉可少一条群文件消息",
     "report.llm": "填了 LLM_API_KEY 才生效；调用失败自动降级为纯统计版",
