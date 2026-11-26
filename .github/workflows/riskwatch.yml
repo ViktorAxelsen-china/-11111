@@ -34,6 +34,17 @@ jobs:
       - name: 拉取代码
         uses: actions/checkout@v4
 
+      - name: 检查必需文件
+        run: |
+          for f in riskwatch.py config.cloud.json; do
+            if [ ! -f "$f" ]; then
+              echo "::error::仓库根目录缺少 $f。请把本地 riskwatch/ 目录里的文件直接上传到仓库根目录（不要多套一层 riskwatch/ 子目录），然后重新运行。"
+              exit 1
+            fi
+          done
+          echo "必需文件齐备："
+          ls -l riskwatch.py config.cloud.json
+
       - name: 准备 Python
         uses: actions/setup-python@v5
         with:
@@ -55,7 +66,9 @@ jobs:
         env:
           QQ_SMTP_USER: ${{ secrets.QQ_SMTP_USER }}
           QQ_SMTP_CODE: ${{ secrets.QQ_SMTP_CODE }}
-          RISK_MAIL_TO: ${{ secrets.RISK_MAIL_TO }}
+          RISK_MAIL_TO: ${{ secrets.RISK_MAIL_TO || vars.RISK_MAIL_TO }}
+          QQ_SMTP_HOST: ${{ vars.QQ_SMTP_HOST }}
+          QQ_SMTP_PORT: ${{ vars.QQ_SMTP_PORT }}
         run: python riskwatch.py --mail-test --config config.cloud.json
 
       - name: 群文件连通性自测
@@ -79,7 +92,9 @@ jobs:
           WECOM_WEBHOOK: ${{ secrets.WECOM_WEBHOOK }}
           QQ_SMTP_USER: ${{ secrets.QQ_SMTP_USER }}
           QQ_SMTP_CODE: ${{ secrets.QQ_SMTP_CODE }}
-          RISK_MAIL_TO: ${{ secrets.RISK_MAIL_TO }}
+          RISK_MAIL_TO: ${{ secrets.RISK_MAIL_TO || vars.RISK_MAIL_TO }}
+          QQ_SMTP_HOST: ${{ vars.QQ_SMTP_HOST }}
+          QQ_SMTP_PORT: ${{ vars.QQ_SMTP_PORT }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
