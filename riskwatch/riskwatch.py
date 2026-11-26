@@ -9,6 +9,8 @@ riskwatch.py — 风险信息抓取 → 分类分级 → 日报 → 企业微信
 香港海关执法动态（重点，单独成章并按案件类型细分）；
 另设「蛇口海运 · 保税区专题（货运 / 旅检）」跨源汇聚栏目，把散落在各来源里
 与海运货运、旅检、保税区及蛇口 / 前海片区相关的案件与监管动态集中呈现。
+默认开启「海关业务聚焦」：除食安信息外，只收录与货运 / 旅检 / 保税区 / 蛇口片区
+及海关业务相关的新闻，可在 config.cloud.json 的 customs_focus 里关闭。
 
 用法：
     python riskwatch.py --dry-run              抓取并预览报告，不发送
@@ -23,7 +25,8 @@ riskwatch.py — 风险信息抓取 → 分类分级 → 日报 → 企业微信
     WECOM_WEBHOOK       必填，企业微信「消息推送」Webhook
     QQ_SMTP_USER        必填（要发邮件时），发件 QQ 邮箱完整地址
     QQ_SMTP_CODE        必填（要发邮件时），QQ 邮箱 16 位 SMTP 授权码
-    RISK_MAIL_TO        收件人，逗号分隔；也可用仓库 Variable
+    RISK_MAIL_TO        收件人，逗号分隔；Secret 或仓库 Variable 均可（workflow 已兼容两者）
+    QQ_SMTP_HOST / QQ_SMTP_PORT  可选 Variable；默认 smtp.qq.com:465（SSL），填 587 自动走 STARTTLS
     LLM_API_KEY         可选，OpenAI 兼容大模型密钥；不填则纯统计版
     LLM_BASE_URL        可选，默认 https://api.deepseek.com/v1
     LLM_MODEL           可选，默认 deepseek-chat
@@ -592,6 +595,7 @@ NOISE = [
     "招聘", "招标", "中标", "采购", "公示", "人事", "任免", "会议纪要", "座谈",
     "青年发展", "证书颁发", "运动会", "足球", "文艺", "天气预报", "贺词",
     "野鸽", "餵飼", "联欢", "嘉年华", "摄影比赛", "征文",
+    "文明养宠", "主题宣传", "宣传活动", "志愿服务", "宣讲辅导", "帮扶会",
 ]
 HIGH = [
     "食物警报", "致敏物警报", "停止食用", "停止饮用", "不要食用", "不要饮用",
@@ -652,6 +656,41 @@ LOCAL_GROUPS = [
 LOCAL_NAMES = {short: name for name, short, _ in LOCAL_GROUPS}
 LOCAL_SHORTS = [short for _, short, _ in LOCAL_GROUPS]
 
+# ------------------------------------------------------------------ 海关业务聚焦
+# 用户要求：除食安信息外，新闻侧重货运 / 旅检 / 保税区 / 蛇口及海关业务。
+# 只按标题判定；长摘要会把普通社会新闻误判成海关业务。
+FOOD_SOURCE_IDS = {"samr_food", "cfs_alert", "cfs_press"}
+FOOD_KEYS = [
+    "食品", "食物", "抽检", "不合格", "警报", "致敏", "超标", "检出", "饮用", "食用",
+    "农产品", "餐饮", "奶粉", "药品", "化妆品", "保健食品", "婴幼儿配方", "膳食",
+    "样本", "含菌量", "大肠菌群", "兽药残余", "防腐剂", "标签", "暂停进口",
+    "禽肉", "肉类", "雪糕", "软雪糕", "食物安全", "食品安全", "抽检不合格",
+    "食品抽检", "食品经营", "食品添加剂", "微生物", "致病菌", "农残", "兽残",
+]
+CUSTOMS_BIZ_KEYS = [
+    # 机构与业务
+    "海关", "海关总署", "深圳海关", "缉私", "口岸", "通关", "报关", "关税", "查验",
+    "检验检疫", "原产地", "归类", "税则", "税号", "aeo", "舱单", "提单",
+    "单一窗口", "关检", "边检", "出入境", "口岸监管", "通关一体化",
+    # 货运 / 海运
+    "集装箱", "货柜", "海运", "船运", "船舶", "货轮", "货运", "货物", "码头", "港口",
+    "航运", "堆场", "拼箱", "装卸", "转关", "过境", "舱位", "夹藏", "伪报", "瞒报",
+    "低报", "冻品", "冻肉", "固体废物", "洋垃圾", "大宗商品", "散货", "物流",
+    # 旅检
+    "旅检", "旅客", "行李", "水客", "免税", "未完税", "携带", "代购", "红色通道",
+    "绿色通道", "邮轮", "客轮", "超额携带", "旅客通道",
+    # 保税区 / 特殊监管区域
+    "保税", "综合保税区", "特殊监管区域", "自贸", "前海", "账册", "加工贸易",
+    "二线", "一线", "保税维修", "保税展示", "跨境电商", "围网", "卡口", "出区", "入区",
+    # 执法与案件类型（不放「侦破 / 捣破 / 判囚」等泛执法动词，否则泛刑事案件会混进来）
+    "走私", "查获", "检获", "缉获", "冒牌", "侵权", "知识产权",
+    "洗钱", "清洗黑钱", "贩毒", "毒品", "濒危物种", "受管制",
+    "反走私", "打击走私", "缉私案件", "走私案",
+    # 蛇口及深圳西部港区（不放裸「深圳」，避免普通地方新闻被放行）
+    "蛇口", "赤湾", "妈湾", "深圳西部港区", "招商局港口", "蛇口港",
+    "大铲湾", "盐田", "深圳口岸", "深圳湾", "沙头角", "文锦渡", "皇岗",
+]
+
 # 香港政府新闻网 / 部分官媒用繁体，关键词表是简体。这里只做「匹配用」的
 # 常见字归一化，显示与链接一律保留原文，不改写来源标题。
 _T2S_PAIRS = [
@@ -697,6 +736,19 @@ def local_tags(item):
     """
     text = to_simplified(item.get("title", ""))
     return [short for _, short, keys in LOCAL_GROUPS if any(k in text for k in keys)]
+
+
+def food_exempt(item, sid):
+    """食安信息豁免业务聚焦：食安专用源，或标题命中食安词表。"""
+    if sid in FOOD_SOURCE_IDS:
+        return True
+    return any(k in to_simplified(item.get("title", "")) for k in FOOD_KEYS)
+
+
+def customs_biz_hits(title):
+    """返回标题命中的海关业务关键词，用于判断该新闻是否属于海关业务范围。"""
+    t = to_simplified(title)
+    return [k for k in CUSTOMS_BIZ_KEYS if k in t]
 
 
 AMOUNT_RE = re.compile(r"(约?\s*[\d.]+\s*(?:亿|万|千)?\s*(?:元|港元|美元|公斤|千克|吨|公吨|件|批次|支|盒|包))")
@@ -798,6 +850,9 @@ def collect(cfg, offline=False, only=None):
         raise RuntimeError("没有启用任何数据源")
     min_score = int(cfg.get("min_score", 2))
     per_source = cfg.get("source_min_score") or {}
+    focus_cfg = cfg.get("customs_focus") or {}
+    focus_on = bool(focus_cfg.get("enabled", True))
+    exempt_food = bool(focus_cfg.get("exempt_food", True))
     state = load_state()
     now = datetime.now(timezone.utc).timestamp()
     items, meta = [], []
@@ -809,9 +864,9 @@ def collect(cfg, offline=False, only=None):
         if err:
             LOG.warning("源 [%s] 抓取失败：%s", src["label"], err)
             meta.append({"id": sid, "label": src["label"], "ok": False,
-                         "total": 0, "kept": 0, "error": err[:120]})
+                         "total": 0, "kept": 0, "focused_out": 0, "error": err[:120]})
         else:
-            kept = 0
+            kept, filtered_out = 0, 0
             for it in raw[:int(src.get("limit", 20))]:
                 if not it.get("title"):
                     continue
@@ -827,6 +882,16 @@ def collect(cfg, offline=False, only=None):
                 threshold = int(per_source.get(sid, min_score))
                 tags = local_tags(it)
                 noisy = any(k in to_simplified(it["title"]) for k in NOISE)
+                # 海关业务聚焦：除食安信息、香港海关重点源、以及命中蛇口专题的条目外，
+                # 只留与货运 / 旅检 / 保税区 / 蛇口片区及海关业务相关的报道。
+                exempt = (sid == FOCUS_ID) or (exempt_food and food_exempt(it, sid))
+                # 专题豁免只认货运 / 旅检 / 保税区三个渠道维度；纯「蛇口本地」地域命中
+                # （例如「深圳…消费集聚区」）不足以证明是海关业务，仍需命中业务词。
+                channel_tags = [t for t in tags if t in ("货运", "旅检", "保税区")]
+                if focus_on and not exempt and (
+                        noisy or not (customs_biz_hits(it["title"]) or channel_tags)):
+                    filtered_out += 1
+                    continue
                 # 命中蛇口专题的条目保底收录（「货运和旅检的相关案件都放进去」），
                 # 但党建 / 慰问 / 招聘等噪声标题即使带地域词也不放行。
                 if not src.get("focus") and score < threshold and not (tags and not noisy):
@@ -848,9 +913,11 @@ def collect(cfg, offline=False, only=None):
                 rec["amounts"], rec["entities"] = extract_tags(rec)
                 items.append(rec)
                 kept += 1
-            LOG.info("源 [%s] 抓到 %d 条，时间窗内保留 %d 条", src["label"], len(raw), kept)
+            LOG.info("源 [%s] 抓到 %d 条，收录 %d 条，业务聚焦滤除 %d 条",
+                     src["label"], len(raw), kept, filtered_out)
             meta.append({"id": sid, "label": src["label"], "ok": True,
-                         "total": len(raw), "kept": kept, "error": ""})
+                         "total": len(raw), "kept": kept,
+                         "focused_out": filtered_out, "error": ""})
         if not offline and idx + 1 < len(ids):
             time.sleep(gap)
 
@@ -897,6 +964,8 @@ def analyse(items, meta, cfg):
         "items": items, "by_cat": by_cat, "focus": focus, "by_sub": by_sub,
         "high": high, "fresh": fresh, "meta": meta,
         "local": local, "local_groups": local_groups, "local_counts": local_counts,
+        "focused_out": sum(int(m.get("focused_out", 0)) for m in meta),
+        "focus_on": bool((cfg.get("customs_focus") or {}).get("enabled", True)),
         "ok_sources": sum(1 for m in meta if m["ok"]),
         "total_sources": len(meta),
         "counts": {lv: sum(1 for x in items if x["level"] == lv) for lv in ("高", "中", "低")},
@@ -953,6 +1022,8 @@ def build_report(a, llm_text=None):
         f"| 食品安全与产品风险 | {len(a['by_cat'][CAT_FOOD])} 条 |",
         f"| 重大案件与执法查获 | {len(a['by_cat'][CAT_CASE])} 条 |",
         f"| 监管新规与公告 | {len(a['by_cat'][CAT_RULE])} 条 |",
+        (f"| 按海关业务聚焦滤除 | {a['focused_out']} 条 |" if a["focus_on"]
+         else "| 业务聚焦 | 已关闭（全量风险信息） |"),
         "",
     ]
     if a["high"]:
@@ -1017,12 +1088,13 @@ def build_report(a, llm_text=None):
             lines += ["> 本期无该类条目。", ""]
 
     lines += ["## 九、来源完整性与口径说明", "",
-              "| 数据源 | 状态 | 抓到 | 收录 | 备注 |",
-              "| --- | --- | --- | --- | --- |"]
+              "| 数据源 | 状态 | 抓到 | 收录 | 聚焦滤除 | 备注 |",
+              "| --- | --- | --- | --- | --- | --- |"]
     for m in a["meta"]:
         status = "正常" if m["ok"] else "失败"
         note = m["error"] or SOURCES[m["id"]].get("note", "")
-        lines.append(f"| {m['label']} | {status} | {m['total']} | {m['kept']} | {note[:60]} |")
+        lines.append(f"| {m['label']} | {status} | {m['total']} | {m['kept']} | "
+                     f"{(m.get('focused_out', 0) if a['focus_on'] else '—')} | {note[:60]} |")
     lines += [
         "",
         "> 口径说明：",
@@ -1032,6 +1104,9 @@ def build_report(a, llm_text=None):
         "> 4. 「🆕」表示 7 天内首次出现；无标记为已报送过的持续在榜条目。报告保留完整快照，群摘要只突出新增。",
         "> 5. 各源设有时间窗（3–30 天，按更新频率不同），抓不到或超窗的条目不纳入，不代表该机构没有发布。",
         "> 6. 微信公众号正文未纳入：微信未开放该能力，改用同一机构官网与香港政府官方 RSS 等同源渠道。",
+        "> 7. 除**食安信息**外，本期已按**海关业务聚焦**筛选：只保留命中货运 / 旅检 / 保税区 / "
+        "蛇口片区或海关业务关键词的报道；食安专用源与香港海关重点源不受此限制，第九节逐源列出滤除条数。"
+        "把 `config.cloud.json` 的 `customs_focus.enabled` 改为 `false` 可恢复全量风险信息。",
         "",
     ]
     if llm_text:
@@ -1056,6 +1131,8 @@ def build_digest(a, file_ok=True, formats=None):
         f"货运 {a['local_counts']['货运']} · 旅检 {a['local_counts']['旅检']} · "
         f"保税区 {a['local_counts']['保税区']} · 蛇口本地 {a['local_counts']['蛇口本地']}",
     ]
+    if a["focus_on"]:
+        lines.append(f"> 口径：非食安新闻已按海关业务聚焦（滤除 {a['focused_out']} 条）")
     if a["high"]:
         lines.append(f"> 高风险首位：{a['high'][0]['title'][:38]}")
     else:
@@ -1119,6 +1196,9 @@ def build_mail_html(a, llm_text=None):
     if a["high"]:
         parts.append('<div style="font-size:13px;color:#475569">优先关注：' +
                      "；".join(esc(x["title"][:42]) for x in a["high"][:3]) + '</div>')
+    if a["focus_on"]:
+        parts.append(f'<div style="font-size:13px;color:#475569;margin-top:4px">'
+                     f'已按海关业务聚焦：非食安新闻滤除 {a["focused_out"]} 条</div>')
     parts.append('</div>')
     parts.append(section("高风险预警", a["high"]))
     local_html = ""
@@ -1171,7 +1251,9 @@ def build_mail_html(a, llm_text=None):
         '<p style="color:#64748b;font-size:12px;line-height:1.7;margin-top:18px">'
         '口径：仅采集政府/监管机构与权威媒体公开发布的标题、日期、链接与摘要，不转载正文，请以原文为准；'
         '人民日报 / 新华网 / 央视网等央媒条目为报道线索而非官方通报，同题多源会标注「同题来源」；'
-        '风险等级、案件类型与专题维度由规则自动判定，属辅助线索而非官方定性；🆕 / NEW 为 7 天内首次出现。<br>'
+        '风险等级、案件类型与专题维度由规则自动判定，属辅助线索而非官方定性；🆕 / NEW 为 7 天内首次出现。'
+        '除食安信息外，新闻已按海关业务聚焦（货运 / 旅检 / 保税区 / 蛇口片区及海关业务），'
+        '食安专用源与香港海关重点源不受此限制；可在 config.cloud.json 关闭该开关。<br>'
         '微信公众号正文未纳入（平台未开放该能力），改用同一机构官网与香港政府官方 RSS 等同源渠道。'
         '</p>'
         f'<p style="color:#94a3b8;font-size:11px;margin-top:16px">由 riskwatch 自动生成 · '
@@ -1494,9 +1576,12 @@ def send_mail(cfg, a, html_text, files, subject=None):
     user = os.getenv("QQ_SMTP_USER", "").strip()
     code = os.getenv("QQ_SMTP_CODE", "").strip()
     to_raw = os.getenv("RISK_MAIL_TO", "").strip()
-    if not (user and code and to_raw):
-        LOG.warning("QQ 邮箱配置不全（需 QQ_SMTP_USER / QQ_SMTP_CODE / RISK_MAIL_TO），跳过邮件")
-        return {"skipped": True}
+    missing = [name for name, value in (("QQ_SMTP_USER", user), ("QQ_SMTP_CODE", code),
+                                        ("RISK_MAIL_TO", to_raw)) if not value]
+    if missing:
+        LOG.warning("QQ 邮箱配置不全，缺少：%s（需 QQ_SMTP_USER / QQ_SMTP_CODE / RISK_MAIL_TO），跳过邮件",
+                    "、".join(missing))
+        return {"skipped": True, "missing": missing}
     tos = [x.strip() for x in re.split(r"[,;，；\s]+", to_raw) if x.strip()]
     subject = subject or f"风险信息日报 · {now_cst():%Y-%m-%d %H:%M} · 高风险 {a['counts']['高']} 条"
     msg = MIMEMultipart("mixed")
@@ -1530,17 +1615,32 @@ def send_mail(cfg, a, html_text, files, subject=None):
             except Exception as exc:  # noqa: BLE001
                 LOG.error("附件 %s 加入失败：%s", p.name, exc)
     try:
-        host = os.getenv("QQ_SMTP_HOST", "smtp.qq.com").strip()
+        # workflow 会把未设置的 Variable 注入成空字符串，用 or 兜底，不能用 getenv 默认值
+        host = (os.getenv("QQ_SMTP_HOST") or "smtp.qq.com").strip()
         try:
-            port = int(os.getenv("QQ_SMTP_PORT", "465"))
+            port = int(os.getenv("QQ_SMTP_PORT") or "465")
         except ValueError:
             port = 465
-        with smtplib.SMTP_SSL(host, port, timeout=25) as srv:
-            srv.login(user, code)
-            srv.sendmail(user, tos, msg.as_string())
-        LOG.info("QQ 邮箱已发送：收件人 %d 个 / 附件 %d 个（SMTP 授权码未写入日志）",
-                 len(tos), attached)
-        return {"to": len(tos), "attachments": attached}
+        if port in (993, 995):
+            raise RuntimeError(f"端口 {port} 是 IMAP/POP3 接收端口，本项目只发不收；"
+                               "发送端口请用 465（SSL）或 587（STARTTLS）")
+        mode = "STARTTLS" if port == 587 else "SSL"
+        if port == 587:
+            # 587 是「先明文连上、再 STARTTLS 升级」，用 SMTP_SSL 直连会报 WRONG_VERSION_NUMBER
+            with smtplib.SMTP(host, port, timeout=25) as srv:
+                srv.ehlo()
+                srv.starttls(context=ssl.create_default_context())
+                srv.ehlo()
+                srv.login(user, code)
+                srv.sendmail(user, tos, msg.as_string())
+        else:
+            # 465（及其它 SSL 直连端口）：连接建立即 TLS
+            with smtplib.SMTP_SSL(host, port, timeout=25) as srv:
+                srv.login(user, code)
+                srv.sendmail(user, tos, msg.as_string())
+        LOG.info("QQ 邮箱已发送：收件人 %d 个 / 附件 %d 个 / %s:%d（%s）（SMTP 授权码未写入日志）",
+                 len(tos), attached, host, port, mode)
+        return {"to": len(tos), "attachments": attached, "mode": mode}
     except Exception as exc:  # noqa: BLE001
         # 授权码绝不能出现在异常里，统一脱敏
         detail = str(exc).replace(code, "***")
@@ -1554,12 +1654,13 @@ def llm_insight(a):
     key = os.getenv("LLM_API_KEY", "").strip()
     if not key:
         return None
-    base = os.getenv("LLM_BASE_URL", "https://api.deepseek.com/v1").rstrip("/")
-    model = os.getenv("LLM_MODEL", "deepseek-chat")
+    base = (os.getenv("LLM_BASE_URL") or "https://api.deepseek.com/v1").rstrip("/")
+    model = os.getenv("LLM_MODEL") or "deepseek-chat"
     brief = []
     for it in a["items"][:60]:
         brief.append(f"[{it['level']}][{it['cat']}] {it['date']} {it['title']}")
-    prompt = ("你是风险信息分析助手。以下是本期抓取到的监管、执法与权威媒体公开信息标题，"
+    prompt = ("你是风险信息分析助手。以下是本期抓取到的监管、执法与权威媒体公开信息标题"
+              "（除食安信息外已按海关业务聚焦，只保留货运 / 旅检 / 保税区 / 蛇口片区相关），"
               "请写 250–400 字中文研判：归纳 2–3 个主要趋势、指出值得持续关注的品类或手法、"
               "提示 1–2 个信息盲区。若标题中有体现，请专门点出**货运渠道（海运/集装箱/报关）、"
               "旅检渠道（旅客/行李/携带物）、保税区与蛇口/深圳西部港区**相关的手法与趋势。"
@@ -1679,7 +1780,9 @@ def mail_test(cfg):
     try:
         r = send_mail(cfg, a, build_mail_html(a), [], subject=f"风险日报 · 邮箱连通性测试 · {now_cst():%m-%d %H:%M}")
         if r.get("skipped"):
-            LOG.error("邮件配置不全，测试未执行")
+            LOG.error("邮件配置不全，测试未执行；缺少：%s。请在 Settings → Secrets and variables "
+                      "→ Actions 里补齐（Secret 不跨仓库；RISK_MAIL_TO 可填 Secret 或 Variable）",
+                      "、".join(r.get("missing") or ["未知项"]))
             return 1
         LOG.info("邮箱自测完成：QQ 邮箱收到测试邮件即代表 SMTP 通道正常")
         return 0
@@ -1714,6 +1817,7 @@ def load_config(path):
                 "min_score": 2,
                 "source_min_score": {"hknews_law": 1, "hknews_health": 1,
                                      "xinhua_legal": 1, "cctv_search": 1},
+                "customs_focus": {"enabled": True, "exempt_food": True},
                 "report": {"enabled": True, "docx": True, "llm": True,
                            "send_file": True, "send_digest": True},
                 "wecom": {"enabled": True, "send_digest": True},
