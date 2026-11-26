@@ -1,0 +1,79 @@
+{
+  "_说明": "云端配置，不含任何密钥。密钥一律放 GitHub Secrets / 本机环境变量。",
+  "_时间": "定时由 .github/workflows/riskwatch.yml 控制：UTC 00:30 / 10:00 = 北京时间 08:30 / 18:00",
+
+  "sources": [
+    "hkc_press",
+    "samr_food",
+    "samr_fgs",
+    "samr_news",
+    "cfs_alert",
+    "cfs_press",
+    "hknews_law",
+    "hknews_health",
+    "customs_home",
+    "people_search",
+    "xinhua_legal",
+    "cctv_search"
+  ],
+
+  "min_score": 2,
+  "source_min_score": {
+    "hknews_law": 1,
+    "hknews_health": 1,
+    "people_search": 1,
+    "xinhua_legal": 1,
+    "cctv_search": 1
+  },
+
+  "_专题栏目": {
+    "标题": "蛇口海运 · 保税区专题（货运 / 旅检）",
+    "位置": "报告第三节、群摘要、邮件第三节、Word 同版",
+    "口径": "跨源镜像汇总：命中货运 / 旅检 / 保税区 / 蛇口本地的条目集中重列一次，仍保留在原分类，不重复计入总数",
+    "保底收录": "命中专题且非党建慰问类噪声的条目，即使相关性分数低于 min_score 也收录",
+    "调整关键词": "改 riskwatch.py 的 LOCAL_GROUPS（4 组：货运 / 旅检 / 保税区 / 蛇口本地）",
+    "重点源": "hkc_press（香港海关新闻公报）仍单列第四节，抓 30 条、按 7 类案件细分"
+  },
+
+  "report": {
+    "enabled": true,
+    "dir": "reports",
+    "docx": true,
+    "llm": true,
+    "send_file": true,
+    "send_digest": true
+  },
+
+  "wecom": {
+    "enabled": true,
+    "send_digest": true,
+    "high_risk_at_all": false
+  },
+
+  "mail": {
+    "enabled": true,
+    "attach": true,
+    "html": true
+  },
+
+  "_可选源": {
+    "hk_gia": "香港政府全部门新闻公报 RSS，标题为英文；本机/境外可达，默认关闭",
+    "gnews_food": "Google News 中文关键词聚合，本机常被代理拦、境外节点可试，默认关闭",
+    "说明": "要启用就把源 id 加进 sources 数组；新源只需在 riskwatch.py 的 SOURCES 字典里加一项"
+  },
+
+  "_已知风险": {
+    "customs_home": "海关总署首页有间歇性 412 风控（本机实测时好时坏，境外节点可能一直可达）。单源失败会自动隔离并在报告第九节标红；若长期失败，把 customs_home 从 sources 移除即可，不影响其他源",
+    "people_search": "人民网官方检索为 HTTP 明文 POST 接口，关键词「走私 / 旅检」等低频词近 7 天常无新稿，属正常",
+    "央媒口径": "人民日报 / 新华网 / 央视网条目是报道线索而非官方通报，同题多源会标注「同题来源」，定性以官方原文为准"
+  },
+
+  "_可调项": {
+    "min_score": "相关性阈值，越大越严格（重点源 hkc_press 不受此限制；命中蛇口专题的条目保底收录）",
+    "report.docx": "是否生成 Word 版；关掉可少一条群文件消息",
+    "report.llm": "填了 LLM_API_KEY 才生效；调用失败自动降级为纯统计版",
+    "wecom.high_risk_at_all": "有高风险条目时额外发一条 @all 提醒，默认关闭避免扰群",
+    "mail.attach": "邮件是否带 md / docx 附件",
+    "各源时间窗": "在 riskwatch.py 的 SOURCES 里按源设置 lookback（天），高频源 3–7 天、低频源 14–30 天"
+  }
+}
